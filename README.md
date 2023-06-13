@@ -4,13 +4,6 @@ cdc_audit presently consists of two scripts:
  - a script to auto generate mysql audit tables and triggers.
  - a script to auto sync new rows in audit tables to a CSV file.
 
-EXPERIMENTAL!
-=============
-
-This software is still in an early prototype form.  It has not yet been
-used on production systems and is not recommended for that purpose.
-
-
 What problem does cdc_audit solve?
 ==================================
 
