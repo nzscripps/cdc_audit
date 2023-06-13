@@ -2,74 +2,77 @@
 
 <?php
 
-exit ( main() );
+exit(main());
 
 /**
  * Application main function.  Retrieves cli args and runs engine.
  */
-function main() {
+function main()
+{
 
     $opt = getopt("D:d:h:u:p:o:v:m:n:c:t:s:x?");
-    if( @$opt['?'] || !@$opt['d'] ){ 
-        print_help();
+    if (@$opt['?'] || !@$opt['d']) {
+        printHelp();
         return -1;
     }
-    
-    $config = array( );
-    $config['db'] = get_option( $opt, 'd' );
-    $config['host'] = get_option( $opt, 'h', 'localhost' );
-    $config['user'] = get_option( $opt, 'u', 'root' );
-    $config['pass'] = get_option( $opt, 'p', '' );
-    $config['namespace_prefix'] = get_option( $opt, 'n', '' );
-    $config['verbosity'] = get_option( $opt, 'v', 1 );
-    $config['audit_dir'] = get_option( $opt, 'm', './cdc_audit_gen' );
-    $config['tables'] = get_option( $opt, 't', null );
-    $config['stdout'] = STDOUT;
-    
-    if( isset( $opt['o'] ) ) {
-        $fh = fopen( $opt['o'], 'w' );
-        if( !$fh ) {
-            die( "Could not open {$opt['o']} for writing" );
+
+    $config                     = array();
+    $config['db']               = getOption($opt, 'd');
+    $config['host']             = getOption($opt, 'h', 'localhost');
+    $config['user']             = getOption($opt, 'u', 'root');
+    $config['pass']             = getOption($opt, 'p', '');
+    $config['namespace_prefix'] = getOption($opt, 'n', '');
+    $config['verbosity']        = getOption($opt, 'v', 1);
+    $config['audit_dir']        = getOption($opt, 'm', './cdc_audit_gen');
+    $config['tables']           = getOption($opt, 't', null);
+    $config['stdout']           = STDOUT;
+
+    if (isset($opt['o'])) {
+        $fh = fopen($opt['o'], 'w');
+        if (!$fh) {
+            die("Could not open {$opt['o']} for writing");
         }
         $config['stdout'] = $fh;
     }
-    
-    $engine = new cdc_audit_gen_mysql( $config );
+
+    $engine  = new CdcAuditGenMysql($config);
     $success = $engine->run();
-   
-    fclose( $config['stdout'] );
+
+    fclose($config['stdout']);
     return $success ? 0 : -1;
 }
 
 /**
  * Utility function for getting cli arg with default
  */
-function get_option($opt, $key, $default=null) {
-    return isset( $opt[$key ]) ? $opt[$key] : $default;
+function getOption($opt, $key, $default = null)
+{
+    return isset($opt[$key]) ? $opt[$key] : $default;
 }
 
 /**
  * Prints CLI usage information
  */
-function print_help() {
-   
-   echo <<< END
+function printHelp()
+{
+
+    echo <<< END
 
    cdc_audit_gen_mysql.php [Options] -d <db> [-h <host> -d <db> -u <user> -p <pass>]
-   
+
    Required:
    -d db              mysql database name
-   
+
    Options:
-   
+
    -h HOST            hostname of machine running mysql.  default = localhost
    -u USER            mysql username                      default = root
-   -p PASS            mysql password                      
+   -p PASS            mysql password
 
    -m audit_dir       path to write db audit files.       default = ./cdc_audit_gen.
-                                                          
+
    -t tables         comma separated list of tables.      default = generate for all tables
-   
+
    -n namespace      a prefix that will be pre-pended to all classnames.  This makes it
                      possible to use the generated classes multiple times in the same project.
                                                           default = no prefix.
@@ -80,7 +83,7 @@ function print_help() {
                         1 = silent except warnings.
                         2 = informational
                         3 = debug. ( includes extra logging and source line numbers )
-                        
+
     -?                Print this help.
 
 
@@ -88,20 +91,20 @@ END;
 
 }
 
-
 /**
  * This class is the meat of the script.  It generates the audit tables
  * and triggers
  */
-class cdc_audit_gen_mysql {
+class CdcAuditGenMysql
+{
 
     private $host;
     private $user;
     private $pass;
     private $db;
-    
+
     private $verbosity = 1;
-    private $stdout = STDOUT;
+    private $stdout    = STDOUT;
 
     /**
      * Set this value to prefix all classes/tables/files.  This
@@ -112,139 +115,141 @@ class cdc_audit_gen_mysql {
      * note: needs to be re-thought.
      */
     private $namespace_prefix = '';
-    
+
     private $output_dir = './db_audit';
-    
+
     private $tables = null;
-    
-    const log_error = 0;
-    const log_warning = 1;
-    const log_info = 2;
-    const log_debug = 3;
+
+    const LOG_ERROR   = 0;
+    const LOG_WARNING = 1;
+    const LOG_INFO    = 2;
+    const LOG_DEBUG   = 3;
 
     /**
      * Class constructor.  Requires a keyval config array.
      */
-    public function __construct( $config ) {
-       
-        $this->host = $config['host'];
-        $this->user = $config['user'];
-        $this->pass = $config['pass'];
-        $this->db = $config['db'];
-        $this->output_dir = $config['audit_dir'];
+    public function __construct($config)
+    {
+
+        $this->host             = $config['host'];
+        $this->user             = $config['user'];
+        $this->pass             = $config['pass'];
+        $this->db               = $config['db'];
+        $this->output_dir       = $config['audit_dir'];
         $this->namespace_prefix = $config['namespace_prefix'];
-    
-        $tables = @$config['tables'] ? explode( ',', @$config['tables'] ) : null;
-        if( $tables ) {
+
+        $tables = @$config['tables'] ? explode(',', @$config['tables']) : null;
+        if ($tables) {
             $this->tables = array();
-            foreach( $tables as $t ) {
-               $this->tables[trim($t)] = 1;
+            foreach ($tables as $t) {
+                $this->tables[trim($t)] = 1;
             }
         }
-        
+
         $this->verbosity = $config['verbosity'];
-        $this->stdout = $config['stdout'];
-       
+        $this->stdout    = $config['stdout'];
+
     }
 
     /**
      * Executes the engine
      */
-    public function run() {
-       
+    public function run()
+    {
+
         $success = true;
-        if( $this->output_dir && $this->output_dir != '=NONE=' ) {
-            $success = $this->create_db_audit();
+        if ($this->output_dir && '=NONE=' != $this->output_dir) {
+            $success = $this->createDbAudit();
         }
-        
+
         return $success;
     }
-   
-   /**
-    * Queries mysql information_schema and creates audit tables and triggers.
-    */
-    private function create_db_audit() {
-        
+
+    /**
+     * Queries mysql information_schema and creates audit tables and triggers.
+     */
+    private function createDbAudit()
+    {
+
         try {
-        
-            $this->ensure_dir_exists( $this->output_dir );
-            
-            $this->log( sprintf( 'deleting audit table definition files in %s', $this->output_dir ),  __FILE__, __LINE__, self::log_debug );
-            $files = glob( $this->output_dir . '/*.audit.sql');
-            foreach( $files as $file ) {
-                
-                if( is_array( $this->tables ) ) {
-                    $tname = explode( '.', $file);  $tname = $tname[0];
-                    if( !@$this->tables[$tname] ) {
+
+            $this->ensureDirExists($this->output_dir);
+
+            $this->log(sprintf('deleting audit table definition files in %s', $this->output_dir), __FILE__, __LINE__, self::LOG_DEBUG);
+            $files = glob($this->output_dir . '/*.audit.sql');
+            foreach ($files as $file) {
+
+                if (is_array($this->tables)) {
+                    $tname = explode('.', $file);
+                    $tname = $tname[0];
+                    if (!@$this->tables[$tname]) {
                         continue;
                     }
                 }
-                
-                $rc = @unlink( $file );
-                if( !$rc ) {
-                    throw new Exception( "Cannot unlink old file " . $file );
+
+                $rc = @unlink($file);
+                if (!$rc) {
+                    throw new Exception("Cannot unlink old file " . $file);
                 }
-                $this->log( sprintf( 'deleted %s', $file ),  __FILE__, __LINE__, self::log_debug );
+                $this->log(sprintf('deleted %s', $file), __FILE__, __LINE__, self::LOG_DEBUG);
             }
-            $this->log( sprintf( 'deleted audit table definition files in %s', $this->output_dir ),  __FILE__, __LINE__, self::log_info );
-    
+            $this->log(sprintf('deleted audit table definition files in %s', $this->output_dir), __FILE__, __LINE__, self::LOG_INFO);
+
             // $this->write_dao_base_file();
-            
+
             // Connect to the MySQL server
-            $this->log( sprintf( 'Connecting to mysql. host = %s, user = %s, pass = %s ', $this->host, $this->user, $this->pass ),  __FILE__, __LINE__, self::log_debug );
-            $link = @mysqli_connect($this->host,$this->user,$this->pass);
-            if ($link){
-                $this->log( 'Connected to mysql.  Getting tables.',  __FILE__, __LINE__, self::log_info );
-                
-                  // Select the database
-                if( !mysqli_select_db($link, $this->db) ) {
-                    throw new Exception( "Unable to select database {$this->db}");
+            $this->log(sprintf('Connecting to mysql. host = %s, user = %s, pass = %s ', $this->host, $this->user, $this->pass), __FILE__, __LINE__, self::LOG_DEBUG);
+            $link = @mysqli_connect($this->host, $this->user, $this->pass);
+            if ($link) {
+                $this->log('Connected to mysql.  Getting tables.', __FILE__, __LINE__, self::LOG_INFO);
+
+                // Select the database
+                if (!mysqli_select_db($link, $this->db)) {
+                    throw new Exception("Unable to select database {$this->db}");
                 }
-                
+
                 // Get all tables
                 $result = mysqli_query($link, 'SHOW TABLES');
                 while ($row = mysqli_fetch_array($result, MYSQLI_NUM)) {
                     // Get table name
-                    $table = $row[0]  ;
-                    
-                    if( is_array( $this->tables ) && !@$this->tables[$table] ) {
-                        $this->log( sprintf( 'Found table %s.  Not in output list.  skipping', $table ),  __FILE__, __LINE__, self::log_info );
+                    $table = $row[0];
+
+                    if (is_array($this->tables) && !@$this->tables[$table]) {
+                        $this->log(sprintf('Found table %s.  Not in output list.  skipping', $table), __FILE__, __LINE__, self::LOG_INFO);
                         continue;
                     }
-                    
-                    if( strstr( $table, '_audit' ) ) {
-                        $this->log( sprintf( 'Found table %s.  Appears to be an audit table.  skipping', $table ),  __FILE__, __LINE__, self::log_info );
+
+                    if (strstr($table, '_audit')) {
+                        $this->log(sprintf('Found table %s.  Appears to be an audit table.  skipping', $table), __FILE__, __LINE__, self::LOG_INFO);
                         continue;
                     }
-                    
+
                     // Get table info
-                    $sort_clause = '';  // default is unsorted.
-                    $struct = mysqli_query($link, "select Column_name as Field, Column_Type as Type, Is_Nullable as `Null`, Column_Key as `Key`, Column_Default as `Default`, Extra, Column_Comment as Comment from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = '{$this->db}' and TABLE_NAME = '$table' $sort_clause");
-            
+                    $sort_clause = ''; // default is unsorted.
+                    $struct      = mysqli_query($link, "select Column_name as Field, Column_Type as Type, Is_Nullable as `Null`, Column_Key as `Key`, Column_Default as `Default`, Extra, Column_Comment as Comment from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA = '{$this->db}' and TABLE_NAME = '$table' $sort_clause");
+
                     $data = array();
                     while ($row2 = mysqli_fetch_array($struct, MYSQLI_ASSOC)) {
                         $data[] = $row2;
                     }
-                    
+
                     // Get triggers associated with table
                     $struct = mysqli_query($link, "select trigger_name, EVENT_MANIPULATION, ACTION_STATEMENT from INFORMATION_SCHEMA.TRIGGERS where EVENT_OBJECT_TABLE = '$table' and ACTION_TIMING = 'AFTER'");
-            
+
                     $triggers = array();
                     while ($row2 = mysqli_fetch_array($struct, MYSQLI_ASSOC)) {
                         $triggers[] = $row2;
                     }
-                    
-                    $this->write_table( $table, $data, $triggers );
+
+                    $this->writeTable($table, $data, $triggers);
                 }
-                
-                $this->log( sprintf( 'Successfully Generated Audit Tables + Triggers in %s', $this->output_dir ),  __FILE__, __LINE__, self::log_warning );
+
+                $this->log(sprintf('Successfully Generated Audit Tables + Triggers in %s', $this->output_dir), __FILE__, __LINE__, self::LOG_WARNING);
+            } else {
+                throw new Exception("Unable to connect to mysql");
             }
-            else {
-                throw new Exception( "Unable to connect to mysql" );
-            }
-        }
-        catch( Exception $e ) {
-            $this->log( $e->getMessage(), $e->getFile(), $e->getLine(), self::log_error );
+        } catch (Exception $e) {
+            $this->log($e->getMessage(), $e->getFile(), $e->getLine(), self::log_error);
             return false;
         }
         return true;
@@ -253,46 +258,49 @@ class cdc_audit_gen_mysql {
     /**
      * Log a message (or not) depending on loglevel
      */
-    private function log( $msg, $file, $line, $level ) {
-        if( $level >= self::log_debug && $level <= $this->verbosity ) {
-            fprintf( $this->stdout, "%s  -- %s : %s\n", $msg, $file, $line );            
-        }
-        else if( $level <= $this->verbosity ) {
-            fprintf( $this->stdout, "%s\n", $msg );
+    private function log($msg, $file, $line, $level)
+    {
+        if ($level >= self::LOG_DEBUG && $level <= $this->verbosity) {
+            fprintf($this->stdout, "%s  -- %s : %s\n", $msg, $file, $line);
+        } else if ($level <= $this->verbosity) {
+            fprintf($this->stdout, "%s\n", $msg);
         }
     }
-    
+
     /**
      * Ensure that given directory exists. throws exception if cannot be created.
      */
-    private function ensure_dir_exists( $path ) {
-        $this->log( sprintf( 'checking if path exists: %s', $path ), __FILE__, __LINE__, self::log_debug );
-        if( !is_dir( $path )) {
-            $this->log( sprintf( 'path does not exist.  creating: %s', $path ), __FILE__, __LINE__, self::log_debug );
-            $rc = @mkdir( $path );
-            if( !$rc ) {
-                throw new Exception( "Cannot mkdir " . $path );
+    private function ensureDirExists($path)
+    {
+        $this->log(sprintf('checking if path exists: %s', $path), __FILE__, __LINE__, self::LOG_DEBUG);
+        if (!is_dir($path)) {
+            $this->log(sprintf('path does not exist.  creating: %s', $path), __FILE__, __LINE__, self::LOG_DEBUG);
+            $rc = @mkdir($path);
+            if (!$rc) {
+                throw new Exception("Cannot mkdir " . $path);
             }
-            $this->log( sprintf( 'path created: %s', $path ), __FILE__, __LINE__, self::log_info );
+            $this->log(sprintf('path created: %s', $path), __FILE__, __LINE__, self::LOG_INFO);
         }
     }
-    
+
     /**
      * Writes audit table and triggers to file.  one file per table.
      */
-    private function write_table( $table, $info, $triggers ) {
-        
-        $this->log( sprintf( "Processing table %s", $table ),  __FILE__, __LINE__, self::log_info );
-    
-        $this->write_audit_table( $table, $info );
-        $this->write_audit_triggers( $table, $info, $triggers );
+    private function writeTable($table, $info, $triggers)
+    {
+
+        $this->log(sprintf("Processing table %s", $table), __FILE__, __LINE__, self::LOG_INFO);
+
+        $this->writeAuditTable($table, $info);
+        $this->writeAuditTriggers($table, $info, $triggers);
 
     }
 
     /**
      * Writes the audit table to file.
      */
-    private function write_audit_table( $table, $info ) {
+    private function writeAuditTable($table, $info)
+    {
 
         $mask = '
 
@@ -309,7 +317,7 @@ class cdc_audit_gen_mysql {
  *
  */
 ';
-        $buf = sprintf( $mask, $table );
+        $buf = sprintf($mask, $table);
 
         $var_mask = <<< 'END'
   `%1$s` %3$s %11$s %10$s %12$s %13$s comment '%14$s'
@@ -324,69 +332,66 @@ create table if not exists `%2$s` (
 %3$s
 );
 END;
-            
-        $table_body = '';
-        $table_audit = $this->table_audit( $table );
-        
-        $info[] = array( 'Field' => 'audit_event', 'Type' => "enum('insert','update','delete')", 'Null' => false, 'Comment' => 'Indicates event that occurred in source table' );
-        $info[] = array( 'Field' => 'audit_timestamp', 'Type' => 'timestamp', 'Null' => false, 'Comment' => 'Updated when record is inserted, updated or deleted in source table' );
-        $info[] = array( 'Field' => 'audit_pk', 'Type' => 'int(11)', 'Null' => false, 'Comment' => 'Audit table primary key, useful for sorting since mysql time data types are only granular to second level.' );
-      
+
+        $table_body  = '';
+        $table_audit = $this->tableAudit($table);
+
+        $info[] = array('Field' => 'audit_event', 'Type' => "enum('insert','update','delete')", 'Null' => false, 'Comment' => 'Indicates event that occurred in source table');
+        $info[] = array('Field' => 'audit_timestamp', 'Type' => 'timestamp', 'Null' => false, 'Comment' => 'Updated when record is inserted, updated or deleted in source table');
+        $info[] = array('Field' => 'audit_pk', 'Type' => 'int(11)', 'Null' => false, 'Comment' => 'Audit table primary key, useful for sorting since mysql time data types are only granular to second level.');
+
         $pk_cols = array();
-        foreach( $info as $table_column ) {
-    
+        foreach ($info as $table_column) {
+
             $php_safe_field = null;
-            $dto_type = null;
-            
+            $dto_type       = null;
+
             $comment = @$table_column['Comment'];
-            if( @$table_column['Key'] == 'PRI' ) {
+            if (@$table_column['Key'] == 'PRI') {
                 $comment = 'Primary key in source table ' . $table;
             }
-     
-            $lines[] = sprintf( $var_mask,
-                                 $table_column['Field'],
-                                 @$table_column['Comment'],
-                                 $table_column['Type'],
-                                 $table_column['Null'],
-                                 @$table_column['Key'],
-                                 @$table_column['Default'],
-                                 @$table_column['Extra'],
-                                 $php_safe_field,
-                                 $dto_type,
-                                 null,
-                                 $table_column['Null'] == 'YES' ? 'null' : 'not null',
-                                 $table_column['Field'] == 'audit_pk' ? 'primary key' : '',
-                                 $table_column['Field'] == 'audit_pk' ? 'auto_increment' : '',
-                                 str_replace( "'", "''", $comment )
-                               );
-            if( @$table_column['Key'] == 'PRI' ) {
-                $pk_cols[] = sprintf( '`%s`', $table_column['Field'] );
+
+            $lines[] = sprintf($var_mask,
+                $table_column['Field'],
+                @$table_column['Comment'],
+                $table_column['Type'],
+                $table_column['Null'],
+                @$table_column['Key'],
+                @$table_column['Default'],
+                @$table_column['Extra'],
+                $php_safe_field,
+                $dto_type,
+                null, 'YES' == $table_column['Null'] ? 'null' : 'not null', 'audit_pk' == $table_column['Field'] ? 'primary key' : '', 'audit_pk' == $table_column['Field'] ? 'auto_increment' : '',
+                str_replace("'", "''", $comment)
+            );
+            if (@$table_column['Key'] == 'PRI') {
+                $pk_cols[] = sprintf('`%s`', $table_column['Field']);
             }
         }
 
-        if( count($pk_cols ) ) {    
-            $lines[] = sprintf( $index_mask, implode( ', ', $pk_cols ) );
+        if (count($pk_cols)) {
+            $lines[] = sprintf($index_mask, implode(', ', $pk_cols));
         }
-        $lines[] = sprintf( $index_mask, '`audit_timestamp`' );
-              
-        $table_body = implode( ",\n", $lines );
-        
-        $buf .= sprintf( $table_mask, $table, $table_audit, $table_body );
-        
-        $filename_table = $this->table_filename( $table );
+        $lines[] = sprintf($index_mask, '`audit_timestamp`');
+
+        $table_body = implode(",\n", $lines);
+
+        $buf .= sprintf($table_mask, $table, $table_audit, $table_body);
+
+        $filename_table = $this->tableFilename($table);
         $pathname_table = $this->output_dir . '/' . $filename_table;
-        $this->log( sprintf( "Writing %s", $pathname_table ),  __FILE__, __LINE__, self::log_info );
-        $rc = @file_put_contents( $pathname_table, $buf );
-        if( !$rc ) {
-            throw new Exception( "Error writing file " . $pathname_table );
+        $this->log(sprintf("Writing %s", $pathname_table), __FILE__, __LINE__, self::LOG_INFO);
+        $rc = @file_put_contents($pathname_table, $buf);
+        if (!$rc) {
+            throw new Exception("Error writing file " . $pathname_table);
         }
     }
-    
 
     /**
      * Writes audit triggers to SQL file. appends to existing file.
      */
-    private function write_audit_triggers( $table, $info, $triggers ) {
+    private function writeAuditTriggers($table, $info, $triggers)
+    {
 
         $mask = '
 
@@ -398,15 +403,15 @@ END;
  *
  */
 ';
-        $buf = sprintf( $mask, $table );
-        
+        $buf = sprintf($mask, $table);
+
         $drop_trigger_mask = <<< 'END'
-      
+
 DROP TRIGGER IF EXISTS `%1$s`;
 
 END;
 
-        $triggers_mask = <<< 'END'
+        $triggers_mask = <<< 'EOF'
 -- %1$s after INSERT trigger.
 DELIMITER @@
 CREATE TRIGGER `%1$s_after_insert` AFTER INSERT ON `%1$s`
@@ -417,7 +422,7 @@ CREATE TRIGGER `%1$s_after_insert` AFTER INSERT ON `%1$s`
  END;
 @@
 
--- %1$s after UPDATE trigger.      
+-- %1$s after UPDATE trigger.
 DELIMITER @@
 CREATE TRIGGER `%1$s_after_update` AFTER UPDATE ON `%1$s`
  FOR EACH ROW BEGIN
@@ -436,110 +441,112 @@ CREATE TRIGGER `%1$s_after_delete` AFTER DELETE ON `%1$s`
 %9$s
  END;
 @@
-END;
+EOF;
 
-        $table_audit = $this->table_audit( $table );
+        $table_audit = $this->tableAudit($table);
 
         // Drop existing AFTER triggers for this table.
         $tg_map = array();
-        foreach( $triggers as $tg_old ) {
+        foreach ($triggers as $tg_old) {
             $tgname = @$tg_old['trigger_name'];
-            if( $tgname ) {
-                $buf .= sprintf( $drop_trigger_mask, $tgname );            
+            if ($tgname) {
+                $buf .= sprintf($drop_trigger_mask, $tgname);
             }
-            $event = @strtolower($tg_old['EVENT_MANIPULATION']);
-            $statement = @trim( $tg_old['ACTION_STATEMENT'] );
-            if( $event && $statement ) {
-               
+            $event     = @strtolower($tg_old['EVENT_MANIPULATION']);
+            $statement = @trim($tg_old['ACTION_STATEMENT']);
+            if ($event && $statement) {
+
                 $needle = 'begin';
-                if( strtolower( substr( $statement, 0, strlen($needle) ) ) == $needle ) {
-                    $statement = substr( $statement, strlen($needle) );
+                if (strtolower(substr($statement, 0, strlen($needle))) == $needle) {
+                    $statement = substr($statement, strlen($needle));
                 }
                 $needle = 'end';
-                if( strtolower( substr( $statement, - strlen($needle) ) ) == $needle ) {
-                    $statement = substr( $statement, 0, - strlen($needle) );
+                if (strtolower(substr($statement, -strlen($needle))) == $needle) {
+                    $statement = substr($statement, 0, -strlen($needle));
                 }
-                
+
                 // remove audit statements if present by removing lines containing $table_audit.
                 // note that we cannot rely on comments for markers because mysql CLI client strips comments out by default.
-                $lines = explode( "\n", $statement );
+                $lines    = explode("\n", $statement);
                 $newlines = array();
-                foreach( $lines as $line ) {
-                    if( !strstr( $line, $table_audit ) ) {
+                foreach ($lines as $line) {
+                    if (!strstr($line, $table_audit)) {
                         $newlines[] = $line;
                     }
                 }
-                
-                $tg_map[$event] = trim( implode( "\n", $newlines ) );
+
+                $tg_map[$event] = trim(implode("\n", $newlines));
             }
         }
         $buf .= "\n";
-        
+
         $triggers_body = '';
-        
-        $cols = array();
+
+        $cols     = array();
         $new_vals = array();
         $old_vals = array();
-        foreach( $info as $table_column ) {
-            $cols[] = $table_column['Field'];
-            $new_vals[] = sprintf( 'NEW.`%s`', $table_column['Field'] );
-            $old_vals[] = sprintf( 'OLD.`%s`', $table_column['Field'] );
+        foreach ($info as $table_column) {
+            $cols[]     = $table_column['Field'];
+            $new_vals[] = sprintf('NEW.`%s`', $table_column['Field']);
+            $old_vals[] = sprintf('OLD.`%s`', $table_column['Field']);
         }
-        
+
         $insert_vals = $new_vals;
         $update_vals = $new_vals;
         $delete_vals = $old_vals;
-        
-        $cols[] = 'audit_event';
+
+        $cols[]        = 'audit_event';
         $insert_vals[] = "'insert'";
-        $update_vals[] = "'update'";      
+        $update_vals[] = "'update'";
         $delete_vals[] = "'delete'";
-        
-        $cols[] = 'audit_timestamp';
+
+        $cols[]        = 'audit_timestamp';
         $insert_vals[] = $update_vals[] = $delete_vals[] = 'CURRENT_TIMESTAMP';
-        
-        foreach( $cols as &$col ) {
-            $col = sprintf( '`%s`', $col );
+
+        foreach ($cols as &$col) {
+            $col = sprintf('`%s`', $col);
         }
-        
-        $colnames = implode( ', ', $cols );
-        $insert_vals = implode( ', ', $insert_vals );
-        $update_vals = implode( ', ', $update_vals );
-        $delete_vals = implode( ', ', $delete_vals );
-        
-        $buf .= sprintf( $triggers_mask,
-                         $table,
-                         $this->table_audit( $table ),
-                         $colnames,
-                         $insert_vals,
-                         $update_vals,
-                         $delete_vals,
-                         @$tg_map['insert'],
-                         @$tg_map['update'],
-                         @$tg_map['delete']
-                         );
-        
-        $filename_table = $this->table_filename( $table );
+
+        $colnames    = implode(', ', $cols);
+        $insert_vals = implode(', ', $insert_vals);
+        $update_vals = implode(', ', $update_vals);
+        $delete_vals = implode(', ', $delete_vals);
+
+        $buf .= sprintf($triggers_mask,
+            $table,
+            $this->tableAudit($table),
+            $colnames,
+            $insert_vals,
+            $update_vals,
+            $delete_vals,
+            @$tg_map['insert'],
+            @$tg_map['update'],
+            @$tg_map['delete']
+        );
+
+        $filename_table = $this->tableFilename($table);
         $pathname_table = $this->output_dir . '/' . $filename_table;
-        $this->log( sprintf( "Writing triggers to %s", $pathname_table ),  __FILE__, __LINE__, self::log_info );
-        $rc = @file_put_contents( $pathname_table, $buf, FILE_APPEND );
-        if( !$rc ) {
-            throw new Exception( "Error writing file " . $pathname_table );
+        $this->log(sprintf("Writing triggers to %s", $pathname_table), __FILE__, __LINE__, self::LOG_INFO);
+        $rc = @file_put_contents($pathname_table, $buf, FILE_APPEND);
+        if (!$rc) {
+            throw new Exception("Error writing file " . $pathname_table);
         }
     }
 
     /**
      * given source table name, returns audit table name
      */
-    private function table_audit( $table ) {
-        return sprintf( "%s%s_audit", $this->namespace_prefix,  $table );
+    private function tableAudit($table)
+    {
+        return sprintf("%s%s_audit", $this->namespace_prefix, $table);
     }
-   
+
     /**
      * given source table name, returns audit sql filename
      */
-    private function table_filename( $table ) {
-        return sprintf( "%s%s.audit.sql", $this->namespace_prefix,  $table );
+    private function tableFilename($table)
+    {
+        return sprintf("%s%s.audit.sql", $this->namespace_prefix, $table);
     }
 
 }
